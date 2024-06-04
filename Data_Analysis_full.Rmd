@@ -1,0 +1,658 @@
+---
+title: "Data_analysis"
+author: "MariaManina"
+date: '2024-05-04'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+```
+
+1. Предобработка
+
+Переводим результаты из формата Penn Controller Ibex Farm в формат обработки
+
+```{r}
+setwd("C:/Users/Дом/Desktop/Мага/АнДан/Финальный проект")
+
+# Код для функции read.pcibex взят со страницы https://doc.pcibex.net/how-to-guides/data-transformation.html
+
+read.pcibex <- function(filepath, auto.colnames=TRUE, fun.col=function(col,cols){cols[cols==col]<-paste(col,"Ibex",sep=".");return(cols)}) {
+  n.cols <- max(count.fields(filepath,sep=",",quote=NULL),na.rm=TRUE)
+  if (auto.colnames){
+    cols <- c()
+    con <- file(filepath, "r")
+    while ( TRUE ) {
+      line <- readLines(con, n = 1, warn=FALSE)
+      if ( length(line) == 0) {
+        break
+      }
+      m <- regmatches(line,regexec("^# (\\d+)\\. (.+)\\.$",line))[[1]]
+      if (length(m) == 3) {
+        index <- as.numeric(m[2])
+        value <- m[3]
+        if (is.function(fun.col)){
+         cols <- fun.col(value,cols)
+        }
+        cols[index] <- value
+        if (index == n.cols){
+          break
+        }
+      }
+    }
+    close(con)
+    return(read.csv(filepath, comment.char="#", header=FALSE, col.names=cols))
+  }
+  else{
+    return(read.csv(filepath, comment.char="#", header=FALSE, col.names=seq(1:n.cols)))
+  }
+}
+
+results_before <- read.csv("results.csv", row.names = NULL)
+head(results_before)
+
+results <- read.pcibex("results.csv")
+head(results)
+```
+
+Сохраняем результаты 
+
+```{r }
+#write.csv(results, 'results_read.csv')
+```
+
+```{r}
+results <- read.csv("results_read.csv", header = TRUE, stringsAsFactors = TRUE)
+
+# Пытаемся отследить повторные прохождения одного участника - проверяем IP - адреса
+summary(as.factor(results$MD5.hash.of.participant.s.IP.address))
+
+```
+```{r}
+# Их количество
+length(levels((as.factor(results$MD5.hash.of.participant.s.IP.address))))
+# И то, как они соотносятся с количеством участников
+length(levels((as.factor(results$ParticipantID))))
+
+```
+Возможно, какое-то количество людей проходило эксперимент с одного компьютера (но их в любом случае многовато). Но считать этих людей аутлаерами рановато, посмотрим другие факторы
+
+```{r}
+# Выделяем строки, в которых записаны оценки приемлемости (филлеры, в т.ч. контрольные, и стимулы)
+results_judgments <- subset(results, PennElementType == "Controller-AcceptabilityJudgment"
+                            & Parameter == "NULL")
+# Удаляем из датафрейма лишние уровни факторов
+results_judgments <- droplevels(results_judgments)
+
+head(results_judgments)
+
+```
+
+```{r}
+# Проверяем, верным ли получилось количество предложений на респондента
+length(results_judgments$ParticipantID)/(length(levels((as.factor(results_judgments$ParticipantID)))))
+
+```
+Планировалось, что на один экспериментальный лист будет 27 стимулов, 41 филлер и 4 тренировочных, поэтому всё в порядке.
+```{r}
+# Выделяем данные для контрольных вопросов
+results_questions <- subset(results, PennElementType == "Controller-Question")
+results_questions <- droplevels(results_questions)
+head(results_questions)
+```
+
+```{r}
+length(results_questions$ParticipantID)/(length(levels((as.factor(results_questions$ParticipantID)))))
+```
+Сохраним результаты:
+
+```{r}
+#write.csv(results_judgments, 'results_judgments.csv')    #нужные нам оценки приемлемости (основной объект анализа)
+#write.csv(results_questions, 'results_questions.csv')    #контрольные вопросы
+```
+
+```{r}
+table(results_judgments$Label)
+```
+
+```{r}
+table(results_questions$Label)
+```
+
+```{r}
+judgement <- read.csv("results_judgments.csv", header = TRUE, stringsAsFactors = TRUE) 
+question <- read.csv("results_questions.csv", header = TRUE, stringsAsFactors = TRUE)
+str(judgement)
+```
+
+Немного переименуем переменные для удобства:
+```{r}
+colnames(judgement)[which(names(judgement) == "Value")] <- "response"              # оценка по шкале Ликерта 1-7
+colnames(judgement)[which(names(judgement) == "ParticipantID")] <- "id"            # id участника
+colnames(judgement)[which(names(judgement) == "Time.taken.to.answer.")] <- "time"  # сколько времени занял у испытуемого вопрос
+str(judgement)
+```
+Аналогично -- с контрольными вопросами:
+
+```{r}     
+colnames(question)[which(names(question) == "ParticipantID")] <- "id"                                                       # id участника
+colnames(question)[which(names(question) == "Whether.or.not.answer.was.correct..NULL.if.N.A.")] <- "answer_is_correct"      # верный ли ответ был дан на к.в.
+str(question)
+```
+
+```{r}
+judgement$response[judgement$response == "NULL"] <- NA
+judgement$response <- droplevels(judgement$response)
+levels(judgement$response)
+
+```
+```{r}
+summary(judgement$response)
+```
+```{r}
+question$answer_is_correct[question$answer_is_correct == "NULL"] <- NA
+question$answer_is_correct <- as.numeric(as.character(question$answer_is_correct))
+summary(question$answer_is_correct)
+```
+
+
+```{r}
+str(judgement$response)
+```
+```{r}
+judgement$response <- as.numeric(as.character(judgement$response))
+summary(judgement$response)
+```
+Переобозначим филлеры и стимулы (для единообразия):
+
+```{r}
+judgement$type[judgement$Label == "filler1"] <- "filler"
+judgement$type[judgement$Label == "stimul1"] <- "stimul"
+judgement$type[judgement$Label == "training_trials"] <- "training"
+```
+
+```{r}
+table(judgement$type)
+```
+Переобозначим уровни независимых переменных (для наглядности):
+
+```{r}
+#а мб потом обратно вернуть? типа удалить ячейку вообще...
+colnames(judgement)[which(names(judgement) == "conjunction_strategy")] <- "Variable_1"
+judgement$Variable_1 = factor(judgement$Variable_1, levels=c("com", "com_abs", "conj"))
+levels(judgement$Variable_1) = c("value_1_1", "value_1_2", "value_1_3")
+
+
+colnames(judgement)[which(names(judgement) == "pron_person")] <- "Variable_2"
+judgement$Variable_2 = factor(judgement$Variable_2, levels=c("1", "2", "3"))
+levels(judgement$Variable_2) = c("value_2_1", "value_2_2", "value_2_3")
+
+```
+
+Оставим только интересующие нас столбцы:
+
+```{r}
+#judgement_short <- judgement[,c(15,16,17,18,19, 20, 31 ,22,29,13)]
+judgement_short <- judgement[,c( "id", "group", "sentence_id", "lexicalization",
+                              "Variable_1", "Variable_2", "type", "filler_type",
+                              "time", "response"
+  
+                            )]
+head(judgement_short)
+
+#question_short <- question[,c(15,28)]
+question_short <- question[,c("id", "answer_is_correct")]
+head(question_short)
+```
+
+```{r}
+#write.csv(judgement_short, file = "judgement_short.csv", row.names=F)
+#write.csv(question_short, file = "question_short.csv", row.names=F)
+```
+
+2. Нормализация оценок
+
+```{r}
+judgement_short <- read.csv("judgement_short.csv", header = TRUE, stringsAsFactors = TRUE)
+
+# Уберем из датафрейма данные для тренировочных предложений
+dataset.working = subset(judgement_short, type != "training")
+# # Уберем неиспользуемые в новом датафрейме уровни
+dataset.working = droplevels(dataset.working)
+# # Сортируем все данные по респондентам
+dataset.z = dataset.working[with(dataset.working, order(id)),]
+
+# # Разобьем датафрейм на части по респондентам
+split.Respondents = split(dataset.z$response, f = dataset.z$id)
+# # Применим функцию scale()
+split.Respondents.z = lapply(split.Respondents, scale)
+# # Снова соберем датафрейм с помощью функции unsplit(), добавляя новую колонку - zscores
+dataset.z$zscores = unsplit(split.Respondents.z, f = dataset.z$id)
+head(dataset.z)
+
+# Сохраним новый файл со стобцом с нормализованными значениями
+
+#write.csv(dataset.z, file = "judgement_norm.csv", row.names=F)
+```
+
+3. Поиск и удаление аутлаеров
+
+```{r}
+# Далее будем работать с этими файлами
+
+# Файл с нормализованными оценками для стимулов и филлеров
+judgement_norm <- read.csv("judgement_norm.csv", header = TRUE, stringsAsFactors = TRUE)
+# Файл без нормализации, но с оценками для тренировочных предложений
+judgement_training <- read.csv("judgement_short.csv", header = TRUE, stringsAsFactors = TRUE)
+# Файл с ответами на контрольные вопросы
+question_short <- read.csv("question_short.csv", header = TRUE, stringsAsFactors = TRUE)
+```
+
+3.1. Ответы на контрольные вопросы
+
+```{r}
+control_results = with(question_short,
+                       aggregate(list(correct_answers = answer_is_correct),
+                                 list(subject = id), sum) )
+
+control_results
+control_results[control_results$correct_answers < 3,]
+```
+По признаку 3.1. запишем в аутлаеры H7928, S6252 (1-2 ответа на контрольные вопросы из 4 -- очень подозрительно).
+
+3.2. Крайний позитив или крайний негатив
+
+Посмотрим на наличие очень "разрешающих" или очень "запрещающих" респондентов (вряд ли это тенденция, скорее всего, человек прокликал опросник). 
+
+```{r}
+str(judgement_norm)
+```
+
+```{r}
+# смотрим все оценки всех респондентов
+
+xtabs(~ id + response, judgement_norm)
+```
+
+По результатам отсмотра вручную запишем в аутлаеры Z3919, T7162, S6252 (снова), R3588, Q4589, N1310, L8484, H7928, G499, C4640, A4404, A3888
+
+
+3.3. Пропуски ответов
+
+```{r}
+# Создаем вектор для подсчета пропусков ответов
+vector <- rep("", length(judgement_norm$response))
+
+for(i in 1:length(judgement_norm$response)){
+  if (is.na(judgement_norm$response[i])){
+    vector[i] <- "T"
+  }
+  else {
+    vector[i] <- "F"      # т.е. если встречаем F, значит, всё хорошо
+  }
+}
+head(vector)
+```
+```{r}
+judgement_norm$null <- vector
+
+null_stat <- data.frame(xtabs(~ id + null, judgement_norm))
+null_stat
+```
+
+```{r}
+null_stat[with(null_stat, order(null, Freq)),]
+```
+Слишком много "T" у H7928 (снова) и D3608.
+
+3.4. Время ответа
+
+Если респондент очень мало времени уделяет каждому вопросу (меньше, чем нужно для одного прочтения предложения, например), это основание для того, чтобы считать его аутлаером.
+
+```{r}
+str(judgement_norm)
+summary(judgement_norm$time)
+```
+```{r}
+# Выделяем быстрые ответы
+fast <- subset(judgement_norm, time < 300)
+fast <- droplevels(fast)
+
+fast
+
+```
+
+```{r}
+fasters <- xtabs(~ id, fast)
+length(levels(fast$id))
+fasters
+```
+
+Ещё два аутлаера: K2312 и L4663 
+
+```{r}
+(dfL4663  <- subset(judgement_norm, id == "L4663"))
+```
+```{r}
+(dfK2312 <- subset(judgement_norm, id == "K2312"))
+```
+В целом, если смотреть прицельно, время более-менее среднее. Сравним со статистикой другого (случайного) респондента:
+
+```{r}
+#sample(judgement_norm$id, 1)
+```
+```{r}
+(dfD5083 <- subset(judgement_norm, id == "D5083"))
+```
+
+Учитывая тот факт, что по количеству респондентов на экспериментальный лист данных почти впритык, было принято решение не удалять  K2312 и L4663.
+
+Удалим аутлаеров:
+
+
+```{r}
+# Создаем вектор с перечнем аутлаеров
+outliers <- c("N1310",
+              "A3888", 
+              "A4404", 
+              "C4640", 
+              "G499",
+              "L8484", 
+              "N1310",
+              "Q4589",
+              "R3588", 
+              "T7162",
+              "Z3919", 
+              "D3608", 
+              "H7928", 
+              "S6252") 
+
+               
+length(outliers) 
+```
+
+```{r}
+'%!in%' <- function(x,y)!('%in%'(x,y))
+my_data_no_outliers <- subset(judgement_norm, id %!in% outliers) 
+my_data_no_outliers <- droplevels(my_data_no_outliers)
+length(levels(judgement_norm$id)) 
+#112
+length(levels(my_data_no_outliers$id))  
+#99
+
+# Смотрим статистику по экспериментальным листам
+responses_by_list <- xtabs(~ group, my_data_no_outliers)
+responses_by_list/27
+```
+Тут не очень красивые данные, потому что F -- это не только номер листа, но и число филлеров, поэтому придётся вспомнить, что R можно использовать как калькулятор
+
+```{r}
+# из общего числа респондентов (после удаления аутлаеров) вычтем чисто респондентов по всем листам, кроме F -- получим число для F
+length(levels(my_data_no_outliers$id)) - 8 - 15 - 11 - 10 - 10 - 13 - 11 - 11
+```
+
+Итоговое распределение по листам (не совсем равномерное, но терпимое):
+
+```{r}
+data= matrix(c(1:9), ncol=9, byrow=TRUE)
+colnames(data) <- c('A','B','C','D', 'E', 'F', 'G', 'H', 'I')
+rownames(data) <- c('num_resp')
+
+data[data == '1'] <- '8'
+data[data == '2'] <- '15'
+data[data == '3'] <- '11'
+data[data == '4'] <- '10'
+data[data == '5'] <- '10'
+data[data == '6'] <- '10'
+data[data == '7'] <- '13'
+data[data == '8'] <- '11'
+data[data == '9'] <- '11'
+
+data
+```
+```{r}
+# # Переводим все быстрые ответы в NA
+my_data_no_outliers$time[my_data_no_outliers$time < 300] <- NA
+#write.csv(my_data_no_outliers, file = "judgments_no_outliers.csv", row.names=F)
+```
+
+4. Характеристика респондентов
+
+```{r}
+results <- read.csv("results_read.csv", header = TRUE, stringsAsFactors = TRUE)
+head(results)
+```
+
+```{r}
+respondents <- results[,c('ParticipantID', 'PennElementName', 'Value')]
+str(respondents)
+```
+```{r}
+colnames(respondents)[which(names(respondents) == "ParticipantID")] <- "id"
+colnames(respondents)[which(names(respondents) == "PennElementName")] <- "question"
+write.csv(respondents, file = "respondents.csv", row.names=F)
+```
+
+```{r}
+# снова уберём аутлаеров
+
+fin_resps <- subset(respondents, id %!in% outliers) 
+fin_resps <- droplevels(fin_resps)
+write.csv(fin_resps, file = "fin_resps.csv", row.names=F)
+```
+
+
+```{r}
+# информация про пол участников
+gender_info = subset(fin_resps,  question == "gender_response")
+head(gender_info)
+write.csv(gender_info, file = "gender_info.csv", row.names=F)
+
+women = subset(gender_info, Value == "женский")
+
+men = subset(gender_info, Value == "мужской")
+
+nrow(women)
+#51
+nrow(men)
+#48
+```
+
+```{r}
+# информация про возраст участников (вопрос про возраст в анкете был необязательным)
+age_info = subset(fin_resps,  question == "age_response")
+head(age_info)
+write.csv(age_info, file = "age_info.csv", row.names=F)
+```
+
+```{r}
+# не все респонденты добросовестно указывали в поле "возраст" число:
+summary(age_info$Value)
+```
+
+```{r}
+age_info[order (age_info$Value), ]
+```
+
+```{r}
+v <- subset(age_info, select = c(Value))
+v <- age_info[order(age_info$Value, decreasing = TRUE), ] 
+v <- v[1:99, 3]
+v <- v[! v %in% c("Россяйкин", "2х")]
+v
+```
+```{r}
+x <- c(
+   62,  61,  60,  59,  56,  55,  54,  54,  53,  52,  52,  52,  51,  51,  51,  50,  49,  49,  49,  48,  48,  47,  47,  47,  46,  46,  45,  45,  45,  44, 
+   44,  43,    43,  42,  42,  42,  42, 42,  41,  40,  39,  39,  39,  38,  38 , 38 , 38,  37,  37,  37 , 36 , 36,  36,  35 , 35 , 35 , 35 , 35,  34,  33,
+   32 , 32  ,32 , 32,    32 , 31,  31,  31 , 30,  30 , 30,  30 , 29 , 28 , 27,  26  ,21 , 21,  21 , 21 , 21  ,20 , 20 , 20 , 20 , 19 , 19 , 19,  19 , 19,
+   19, 18 , 18 , 18 , 18,  17,56)
+```
+
+Построим гистограмму распределения: 
+
+```{r}
+hist(x, main = "Возраст респондентов", 
+     xlab="Возраст", ylab = "Частота",
+     col = "purple")
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+
+
+boxplot(x, col = "purple", ylab = "Возраст", main = "Боксплот по возрасту респондентов")
+```
+Выбросов не замечено.
+
+```{r}
+max(x)
+#62
+min(x)
+#17
+mean(x)
+#37.17526
+sd(x)
+#12.18521
+```
+
+```{r}
+# информация о наличии лингвистического образования
+gender_info = subset(fin_resps,  question == "lang_edu_response")
+lang_edu = subset(gender_info, Value == "да")
+head(lang_edu)
+nrow(lang_edu)
+```
+5 респондентов заявили о наличии у них лингвистического образования.
+
+Графическое представление данных
+```{r}
+results <- read.csv("judgments_no_outliers.csv")
+length(unique(results$id))
+```
+
+```{r}
+results$var1 <- rep("", length(results$response))     #уберём из данных лексикализации
+results$var2 <- rep("", length(results$response))
+
+results$var1[results$filler_type == "good"] <- "gram"   #для графика нам нужны грамматичные и неграмматичные филлеры
+results$var1[results$filler_type == "bad"] <- "ungram"
+results$var1[results$Variable_1 == "value_1_1"] <- "value_1_1"    # с оценками для филлеров мы сравниваем оценки по экспериментальным предложениям
+results$var1[results$Variable_1 == "value_1_2"] <- "value_1_2"
+results$var1[results$Variable_1 == "value_1_3"] <- "value_1_3"
+
+# мы предполагаем, что оценки грамматичных филлеров будут на уровне 6-7, неграмматичных -- 1-2, про экспериментальные пока предполагаем лишь то, что в гипотезах
+# если верна H0: оценки для сочинительных конструкций, комитативных и комитативных с поглощением плюс-минус одинаковые
+# если верна H1: комитатив с поглощением получит более высокие оценки приемлемости, чем сочинение, а обычный комитатив получит оценки ниже, чем 
+# комитатив с поглощением, но выше, чем сочинение
+
+results$var2[results$Variable_2 == "value_2_1"] <- "value_2_1"    # кодируем вторую переменную подобно первой
+results$var2[results$Variable_2 == "value_2_2"] <- "value_2_2"
+results$var2[results$Variable_2 == "value_2_3"] <- "value_2_3"
+results$var2[results$type == "filler"] <- "filler"
+
+results$var1 <- as.factor(results$var1)
+results$var2 <- as.factor(results$var2)
+```
+
+```{r}
+results$var3 <- rep("", length(results$response))
+results$var4 <- rep("", length(results$response))
+
+results$var3[results$filler_type == "good"] <- "gram"
+results$var3[results$filler_type == "bad"] <- "ungram"
+results$var3[results$Variable_2 == "value_2_1"] <- "value_2_1"
+results$var3[results$Variable_2 == "value_2_2"] <- "value_2_2"
+results$var3[results$Variable_2 == "value_2_3"] <- "value_2_3"
+
+results$var4[results$type == "filler"] <- "filler"
+results$var4[results$Variable_1 == "value_1_1"] <- "value_1_1"
+results$var4[results$Variable_1 == "value_1_2"] <- "value_1_2"
+results$var4[results$Variable_1 == "value_1_3"] <- "value_1_3"
+
+results$var3 <- as.factor(results$var3)
+results$var4 <- as.factor(results$var4)
+
+write.csv(results, file = "judgments_interaction.csv", row.names=F)
+head(results)
+```
+
+```{r}
+#построим график взаимодействия
+results <- read.csv("judgments_interaction.csv", header = TRUE, stringsAsFactors = TRUE)
+str(results)
+
+results$var1 = factor(results$var1, levels=c("gram","ungram", "value_1_1", "value_1_2", "value_1_3"))
+results$var2 = factor(results$var2, levels=c("filler","value_2_1","value_2_2", "value_2_3"))
+# Операция переименования
+levels(results$var1) = c("грамматичные", "неграмматичные", "com", "com_abs", "conj", "control")
+levels(results$var2) = c("филлер","1 лицо","2 лицо", "3 лицо")
+
+# Считаем средние, стандартное отклонение и стандартную ошибку для каждого условия
+results_means = results %>%
+  group_by(var1, var2) %>%
+  summarize(condition_mean = mean(zscores, na.rm=TRUE), 
+            сondition_sd = sd(zscores, na.rm=TRUE), 
+            condition_se = sd(zscores, na.rm=TRUE)/sqrt(n()))
+results_means
+
+# Строим график:
+interaction_means = ggplot(results_means, 
+                       aes(x = var1, 
+                           y = condition_mean, 
+                           group = var2, 
+                           color = var2)) + 
+  geom_line()+ 
+  geom_point()+ 
+  geom_errorbar(aes(ymin = condition_mean - condition_se, 
+                    ymax = condition_mean + condition_se), width = .3)+ 
+   scale_y_continuous(limits=c(-1.2, 0.8)) +   #границы оси OY
+  labs(title = "График взаимодействия", x = "Тип соединения", color = "Лицо на предикате", y = "нормализованные оценки") +
+  theme_light() + 
+  theme(legend.position="bottom")
+interaction_means
+```
+
+```{r}
+# Делаем то же самое при другом расположении переменных
+
+# Операция переименования
+levels(results$var3) = c("грамматичные", "неграмматичные", "1 лицо", "2 лицо", "3 лицо")
+levels(results$var4) = c("филлер","com", "com_abs", "conj", "control")
+
+
+results_means_another = results %>%
+  group_by(var3, var4) %>%
+  summarize(condition_mean = mean(zscores, na.rm=TRUE), 
+            сondition_sd = sd(zscores, na.rm=TRUE), 
+            condition_se = sd(zscores, na.rm=TRUE)/sqrt(n()))
+results_means_another
+
+interaction_means_another = ggplot(results_means_another, 
+                           aes(x = var3, 
+                               y = condition_mean, 
+                               group = var4, 
+                               color = var4)) + 
+  geom_line()+ 
+  geom_point()+ 
+  geom_errorbar(aes(ymin = condition_mean - condition_se, 
+                    ymax = condition_mean + condition_se), width = .3) + 
+  labs(title = "График взаимодействия (другое расположение переменных)", x = "Лицо на предикате", color = "Тип соединения конъюнктов", y = "нормализованные оценки") +
+  theme_light() +
+  theme(legend.position="bottom")
+interaction_means_another
+```
+Из графиков взаимодействия мы видим, что наиболее высокие оценки приемлемости получили предложения типа "Мы с Машей пришли" / "Вы с Машей пришли" (= ты и Маша) / "Они с Машей пришли" (= он и Маша / она и Маша). Это комитатив с поглощением). Это результат, который подтверждается корпусным исследованием [Подлесская 2012] и (возможно) совпадает с интроспекцией носителей русского языка (по крайней мере, моей).
+
+С оставшимися стратегиями соединения конъюнктов всё не так однозначно: фактор типа соединения начинает взаимодействовать с фактором лица. А именно, сочинение в среднем лучше для 1 и 3 лица (то есть, "Я и Маша пришли" лучше чем "Я с Машей пришёл", а "Он и Маша пришли" лучше чем "Он с Машей пришёл"),что идёт вразрез с работой [Подлесская 2012].А обычный комитатив без поглощения лучше сочинения для 2 лица (то есть, "Ты с Машей пришёл" лучше, чем "Ты и Маша пришли"). Сложно оценить эти различия с точки зрения интроспекции, так как это похоже на выбор между предложениями разной степени "неправильности". Нельзя опираться и на [Подлесская 2012], так как там исследование проводилось только для предикатов 1 лица. 
+
+Стоит также отметить, что разрыв оценок приемлемости между комитативом с поглощением и оставшимися двумя стратегиями на графике больше, чем разрыв между обычным комитативом и сочинением (то есть, первое сильно лучше = приемлемее, чем второе и третье, а между вторым и третьим особо нет разницы, по крайней мере, визуально).
+
+Что ещё бросается в глаза: почему-то грамматичные филлеры оцениваются ниже, чем комитатив с поглощением 1 и 3 лица, а также почти на том же уровне, что сочинение 1 лица и комитатив с поглощением 2 лица. Возможно, непорядок в составлении стимулов. Можно посмотреть графики оценок грамматичных филлеров по отдельным респондентам.
+
+Что планируется сделать дальше: провести регрессионный анализ с несколькими независимыми переменными и / или применить линейные смешанные модели (за случайные эффекты взять id респондента и номер лексикализации). Для апостериорных попарных сравнений отдельных условий между собой можно использовать критерий Тьюки.
+
+Что ожидается получить: насколько большое влияние каждый уровень каждой независимой переменной оказывает на оценку приемлемости предложений. Выяснить, значимым ли оказывается взаимодействие к-л. факторов.
