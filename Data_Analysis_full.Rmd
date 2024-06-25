@@ -7,7 +7,10 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(ggplot2)
+#install.packages('dplyr')
+#library(ggplot2)
+#library(dplyr)
+library(tidyverse)
 ```
 
 1. Предобработка
@@ -60,7 +63,7 @@ head(results)
 Сохраняем результаты 
 
 ```{r }
-#write.csv(results, 'results_read.csv')
+write.csv(results, 'results_read.csv')
 ```
 
 ```{r}
@@ -109,8 +112,8 @@ length(results_questions$ParticipantID)/(length(levels((as.factor(results_questi
 Сохраним результаты:
 
 ```{r}
-#write.csv(results_judgments, 'results_judgments.csv')    #нужные нам оценки приемлемости (основной объект анализа)
-#write.csv(results_questions, 'results_questions.csv')    #контрольные вопросы
+write.csv(results_judgments, 'results_judgments.csv')    #нужные нам оценки приемлемости (основной объект анализа)
+write.csv(results_questions, 'results_questions.csv')    #контрольные вопросы
 ```
 
 ```{r}
@@ -208,8 +211,8 @@ head(question_short)
 ```
 
 ```{r}
-#write.csv(judgement_short, file = "judgement_short.csv", row.names=F)
-#write.csv(question_short, file = "question_short.csv", row.names=F)
+write.csv(judgement_short, file = "judgement_short.csv", row.names=F)
+write.csv(question_short, file = "question_short.csv", row.names=F)
 ```
 
 2. Нормализация оценок
@@ -234,7 +237,7 @@ head(dataset.z)
 
 # Сохраним новый файл со стобцом с нормализованными значениями
 
-#write.csv(dataset.z, file = "judgement_norm.csv", row.names=F)
+write.csv(dataset.z, file = "judgement_norm.csv", row.names=F)
 ```
 
 3. Поиск и удаление аутлаеров
@@ -415,7 +418,7 @@ data
 ```{r}
 # # Переводим все быстрые ответы в NA
 my_data_no_outliers$time[my_data_no_outliers$time < 300] <- NA
-#write.csv(my_data_no_outliers, file = "judgments_no_outliers.csv", row.names=F)
+write.csv(my_data_no_outliers, file = "judgments_no_outliers.csv", row.names=F)
 ```
 
 4. Характеристика респондентов
@@ -500,9 +503,7 @@ hist(x, main = "Возраст респондентов",
 ```
 
 ```{r}
-library(tidyverse)
-library(ggplot2)
-
+#library(tidyverse)
 
 boxplot(x, col = "purple", ylab = "Возраст", main = "Боксплот по возрасту респондентов")
 ```
@@ -580,6 +581,7 @@ write.csv(results, file = "judgments_interaction.csv", row.names=F)
 head(results)
 ```
 
+
 ```{r}
 #построим график взаимодействия
 results <- read.csv("judgments_interaction.csv", header = TRUE, stringsAsFactors = TRUE)
@@ -656,3 +658,195 @@ interaction_means_another
 Что планируется сделать дальше: провести регрессионный анализ с несколькими независимыми переменными и / или применить линейные смешанные модели (за случайные эффекты взять id респондента и номер лексикализации). Для апостериорных попарных сравнений отдельных условий между собой можно использовать критерий Тьюки.
 
 Что ожидается получить: насколько большое влияние каждый уровень каждой независимой переменной оказывает на оценку приемлемости предложений. Выяснить, значимым ли оказывается взаимодействие к-л. факторов.
+
+
+
+```{r}
+#new_df <- subset(results_means_resp, select = c(var1, var2, condition.mean, 	
+#сondition.stdev,
+#condition.se))
+#new_df <- new_df[new_df$var1 == 'грамматичные', ]
+#boxplot(new_df$condition.mean
+ #       , col = "purple", ylab = "Средние нормализованные оценки", main = "Боксплот по средним оценкам грамматичных филлеров")
+```
+Анализируя график, мы видим, что медиана лежит в районе 0.6 (что достаточно низко при наших ожиданиях). Интерквартильных размах составляет порядка 0.8, что показывает, что респонденты не согласуются в своих суждениях; кто-то оценивает грамматичные филлеры высоко, а кто-то низко. Выберем несколько грамматичных филлеров из датафрейма, содержащего филлерные предложения, для последующего анализа в рамках pdf-файла с работой.
+
+```{r}
+random_jud <- subset(judgement, select = c(filler_type, sentence))
+random_jud  <- random_jud[random_jud$filler_type == 'good', ]
+random_jud <- na.omit(random_jud)
+random_jud
+```
+
+```{r}
+random_jud %>% sample_n(5)
+```
+
+```{r}
+results_no_fillers <- subset(results, type != "filler")
+
+boxplot = 
+  ggplot(results_no_fillers, aes(x = var2, y = zscores)) + 
+  geom_boxplot()+
+  facet_grid(. ~ var1) + # расположение графиков друг относительно друга
+  labs(title = "", x = "Лицо на предикате", y = "Нормализованные оценки\n") +
+  theme(legend.position="bottom") +
+  theme_light()
+boxplot
+
+```
+
+Гистограмма
+
+```{r}
+hist = ggplot(results_no_fillers, aes(x=zscores))+ 
+  geom_histogram(aes(y = ..density..),binwidth=.1, color="black", fill="white") + 
+  geom_density() + 
+  facet_grid(var1 ~ var2)+ # расположение графиков друг относительно друга
+  labs(title = "", x = "\nНормализованные оценки", y = "Плотность\n") +
+  theme(legend.position="bottom")
+hist
+```
+5. Анализ результатов
+
+Для анализа оценок приемлемости лучшим и наиболее распространенным методом анализа в последние годы стал регрессионный анализ с применением смешанных линейных моделей, которые учитывают вариативность, возникающую за счет группировки данных по параметрам, не имеющим отношение к целевым факторам эксперимента.Почему не обычные линейные модели? Они имплицируют, что наблюдения независимы друг от друга. Кажется, что внутри наших экспериментальных групп могут быть корреляции. Если такие корреляции игнорировать, можно ошибиться с выводами.
+
+Смешанные модели со случайными факторами позволяют учитывать вариативность, возникающую за счет группировки данных по параметрам, не имеющим отношение к целевым факторам эксперимента. В частности, все респонденты разные, но ответы одного конкретного человека могут объединяться по каким-то признакам – он особым образом понимает задание, специфично использует шкалу оценок. Поэтому в качестве т.н. случайного фактора надо добавлять фактор респондента (id). Иными словами, изменчивость, которая обусловлена респондентом, будет исключена из расчёта коэффициентов для основных факторов, и будет более ясно, насколько значимы или не значимы эти основные факторы. Также в качестве случайного фактора была выбрана лексикализация. Лексическое наполнение предложения (sentence_id) также может смещать оценку (мы видели это на грамматичных филлерах, а теперь будем анализировать стимулы.)
+
+Смешанные линейные модели включают:
+1) случайные эффекты (random effects) - коэффициенты, которые варьируют при переходе от одной группы наблюдений к другой 
+2) фиксированные эффекты (fixed effects) - коэффициенты, которые не меняются при переходе от одной группы наблюденийк другой (а варьируют по фиксированым уровням)
+
+Будем подбирать модели с разными комбинациями эффектов и сравнивать их между собой. Напомню, что Variable 1 -- стратегия соединения конъюнктов, Variable 2 -- лицо на предикате.
+
+
+```{r}
+install.packages('lme4')
+library(lme4)
+library(lmerTest)
+library(buildmer)
+```
+```{r}
+install.packages("Momocs")
+library(Momocs)
+install.packages('Rcpp')
+library(Rcpp)
+```
+
+```{r}
+#model_0 <- lme4::lmer(zscores ~ 1 + Variable_1 * Variable_2
+#                      + (1 + Variable_1 * Variable_2  | id)
+#                      + (1 + Variable_1 * Variable_2  | sentence_id),
+#                      data = results)
+
+```
+Сравнивать модели будем с помощью теста хи-квадрат, восполльзовавшись функцией anova().
+
+```{r}
+model_ok <- lme4::lmer(zscores ~ 1 + Variable_1 * Variable_2
+                       + (1 | id)
+                       + (1 | sentence_id),
+                       data = results)
+
+model_10 <- lme4::lmer(zscores ~ 1 + Variable_1 * Variable_2
+                       + (1   | id)
+                       + (1 + Variable_1 + Variable_2 | sentence_id),
+                       data = results)
+
+anova(model_ok, model_10, refit = FALSE)
+
+#какие-то модели не хотели грузиться из принципа, напр., см. строчку ниже
+#anova(model_0, model_10, refit = FALSE)
+```
+
+Например, здесь видно, что model_ok лучше, т.к. имеет более низкое значение по информационному критерию Акаике (AIC) и Байесовскому информационному критерию (BIC).
+
+```{r}
+#model_2 <- lme4::lmer(zscores ~ 1 + Variable_1 * Variable_2
+#                      + (1 + Variable_1 * Variable_2  | id)
+#                      + (1 + Variable_1 + Variable_2  | sentence_id), data = results)
+
+```
+```{r}
+#anova(model_ok, model_2, refit = FALSE)
+```
+
+
+```{r}
+model_ok_1 <- lme4::lmer(zscores ~ 1 + Variable_1 + Variable_2
+                       + (1 | id)
+                       + (1 | sentence_id),
+                       data = results)
+anova(model_ok, model_ok_1, refit = FALSE)
+```
+Побеждает model_ok_1.
+
+```{r}
+model_ok_2 <- lme4::lmer(zscores ~ 1 + Variable_1 
+                         + (1 | id)
+                         + (1 | sentence_id),
+                         data = results)
+anova(model_ok_2, model_ok_1, refit = FALSE)
+
+```
+Побеждает model_ok_1 (AIC, BIC + результаты теста хи-квадрат)
+
+
+```{r}
+model_ok_3 <- lme4::lmer(zscores ~ 1 + Variable_2 
+                         + (1 | id)
+                         + (1 | sentence_id),
+                         data = results)
+anova(model_ok_3, model_ok_1, refit = FALSE)
+
+```
+
+
+```{r}
+summary(model_ok_1)
+```
+```{r}
+model_best <- lmerTest::lmer(zscores ~ 1 + Variable_1 + Variable_2
+                         + (1 | id)
+                         + (1 | sentence_id),
+                         data = results)
+anova(model_ok, model_best, refit = FALSE)
+summary(model_best)
+```
+
+Если посмотреть на Fixed effects, мы увидим, что переход от value_1_1 к value_1_2 значим, а также значим переход от value_2_2 к value_2_3.
+
+Посчитаем коэффициент распространения дисперсии VIF:
+
+```{r}
+library(car)
+vif(model_best)
+```
+Значение VIF в каждом случае чуть больше 1, что указывает на умеренную корреляцию между данной переменной-предиктором и другими переменными-предикторами 
+в модели.
+
+
+```{r}
+library(MuMIn)
+# R^2 marginal немного меньше, чем R^2conditional
+MuMIn::r.squaredGLMM(model_best)
+
+```
+Сумма случайных и фиксированных эффектов объясняют около 17.8% вариативности. Marginal R2 показывает, сколько этой вариативности объясняется только фиксированными эффектами. Здесь это около 10.5%.
+
+```{r}
+
+# Смотрим residuals. Проверяем, что остатки регрессии распределены нормально вокруг нуля
+hist(residuals(model_best), main="") 
+```
+После того, как мы установили значимость отдельных факторов, появляется необходимость уточнить, какие именно условия значимо отличаются друг от друга.
+Проводим множественные попарные сравнения методом ТЬюки.
+
+
+```{r}
+require(emmeans)
+model_best
+pairs(emmeans::emmeans(object = model_best, ~ Variable_1), adjust="tukey")
+pairs(emmeans::emmeans(object = model_best, ~ Variable_2), adjust="tukey")
+```
+Есть статистически значимая разница в парах value_1_1 - value_1_2, value_1_2 - value_1_3; а также в парах value_2_1 - value_2_2, value_2_1 - value_2_3, value_2_2 - value_2_3. То есть, оценки приемлемости (нормализованные) для обычного комитатива и комитатива с поглощением (SE = 0.04, t = -8.4, p-value < 0,0001), а также для комитатива с поглощением и сочинения (SE = 0.04, t = 8.2, p-value < 0,0001) значимо различаются. То же можно сказать для 1 и 2 (SE = 0.04, t = 8.9, p-value < 0,0001), 2 и 3 (SE = 0.04, t = -4.9, p-value < 0,0001) лица на предикате. Переход от 1 к 3 лицу оказался незначимым.
